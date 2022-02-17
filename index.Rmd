@@ -1,0 +1,151 @@
+---
+title: "Exploring Survey Data With R"
+output: html_document
+bibliography: "bibliography.bibtex"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+This is a brief exploration of the results of a survey using R.  The survey in question asked respondents to rate 7 proposed names for a new organization using a Likert scale ranging from 1 ("strong like") to 5 ("strong dislike").  37 responses were received.  A few ratings are blank; we replace these with 3 ("neutral") under the rationale that, while the ratings are unknown, they are neither definitely positive nor definitely negative.
+
+The survey was implemented using Google Forms which allows the response data to be downloaded as a CSV file.  In the file, each row corresponds to a response and each column corresponds to a survey question (i.e., proposed organization name in our case).  The data looks like this:
+
+```{r echo=FALSE, comment=""}
+cat(read_lines("data.csv", n_max=5), sep="\n")
+```
+
+```{r message=FALSE}
+clean_data <- read_csv("data.csv") %>%
+    mutate(across(everything(), ~replace_na(.x, 3)))
+```
+
+# Name rating distributions
+
+Let's first visualize the distribution of ratings for each name.  Excel would automatically interpret each column in our data as a separate series, but in R it is nigh impossible to work with the data in this form.  Instead, we must pivot the table from its current "wide" form to a "narrow" form in which the ratings are collapsed into a single column.
+
+```{r}
+df <- clean_data %>%
+    pivot_longer(cols=everything(), names_to="name", values_to="rating") %>%
+    mutate(name=as.factor(name))
+
+head(df, n=10)
+```
+
+From this point forward we can access organization names by filtering on or grouping by `df$name`.
+
+When plotting, the order of plots is determined by the order of the factor levels, which appears to be alphabetic by default.  It will make interpretation a little easier if we reorder the factor levels by something more meaningful, say, in increasing order of the number of 5 ratings (i.e., in order of strong dislike).  N.B.: In the violin plot below, the vertical axis is ordered by positivity of rating.
+
+```{r}
+strong_dislike_order <- df %>%
+    filter(rating==5) %>%
+    count(name) %>%
+    arrange(n)
+
+df$name <- factor(df$name, strong_dislike_order$name)
+
+ggplot(df, aes(x=name, y=rating, fill=name)) +
+    geom_violin() +
+    ylim(5, 1) +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.text.x=element_blank()) +
+    theme(axis.ticks.x=element_blank()) +
+    ylab("rating (1=strong like, 5=strong dislike)")
+```
+
+It's a little easier to see the distributions if we plot them as separate bar charts.
+
+```{r}
+ggplot(df, aes(x=rating, fill=name)) +
+    geom_bar(position="dodge") +
+    facet_wrap(~name) +
+    xlab("rating (1=strong like, 5=strong dislike)")
+```
+
+# Mean name ratings
+
+Likert scale ratings can be treated as continuous data in aggregate if the scale has at least 5 categories with homogeneous variance (i.e., the categories are perceived to be equidistantly spaced), especially if the categories are accompanied by a numeric scale to reinforce their linearity [@HARPE2015836].  Thus we are justified in using the mean to represent the aggregate rating of a name.
+
+```{r}
+df2 <- df %>%
+  group_by(name) %>%
+  summarize(mean_rating=mean(3-rating)) %>%  # transform the scale from 5:1 to -2:2
+  arrange(desc(mean_rating))
+
+# As before, order factor levels to achieve desired plot order.
+df2$name <- factor(df2$name, df2$name)
+
+y_scale <- scale_y_continuous(
+    limits=c(-2, 2),
+    breaks=-2:2,
+    labels=c("strong\ndislike", "dislike", "neutral", "like", "strong\nlike")
+)
+
+ggplot(df2, aes(x=name, y=mean_rating, fill=name)) +
+    geom_bar(stat="identity") +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.text.x=element_blank()) +
+    theme(axis.ticks.x=element_blank()) +
+    ylab("mean rating") +
+    y_scale
+```
+
+We see that COAST is the only organization name that has an overall positive rating; MOVE SBC and OUR STREETS are roughly neutral; and the remaining names are all negatively rated.
+
+As an aside, it's interesting to observe how the median fails as an aggregate metric when the domain can take on only a few discrete values: the granularity is too coarse to make distinctions.
+
+```{r}
+# Same as above, but using median.
+
+df3 <- df %>%
+  group_by(name) %>%
+  summarize(median_rating=median(3-rating))
+
+df3$name <- factor(df3$name, df2$name)  # same order as previous plot
+
+ggplot(df3, aes(x=name, y=median_rating, fill=name)) +
+    geom_bar(stat="identity") +
+    theme(axis.title.x=element_blank()) +
+    theme(axis.text.x=element_blank()) +
+    theme(axis.ticks.x=element_blank()) +
+    ylab("median rating") +
+    y_scale
+```
+
+# Correlations
+
+We can also look at any correlations between ratings.  In this survey it so happens that COAST was the name of an existing organization being merged into the new organization, and a number of the survey respondents were members of COAST.  Might the COAST members have favored COAST to the exclusion of all other names?
+
+```{r}
+df4 <- clean_data %>%
+    pivot_longer(
+        cols=setdiff(levels(df$name), "COAST"),  # all names but COAST
+        names_to="name",
+        values_to="rating"
+    ) %>%
+    rename(COAST_rating=COAST) %>%
+    mutate(name=as.factor(name))
+
+ggplot(df4, aes(x=COAST_rating, y=rating)) +
+    geom_jitter(width=.25, height=.25) +
+    labs(x="COAST rating (1=strong like, 5=strong dislike)", y="other name ratings")
+```
+
+As can be seen, where COAST was strongly liked (rating=1) there is a cluster of dislike and strong dislike responses to other names.  But, there are also some positive responses to other names, and there are negative responses to other names independent of the COAST rating.  The lack of correlation can be seen by plotting the mean rating among other names compared to the COAST rating:
+
+```{r}
+df4 %>% group_by(COAST_rating) %>%
+    summarize(mean_rating=mean(rating)) %>%
+    ggplot(aes(x=COAST_rating, y=mean_rating)) +
+        geom_line() +
+        ylim(1, 5) +
+        xlab("COAST rating (1=strong like, 5=strong dislike)") +
+        ylab("mean rating of other names")
+```
+
+# References
