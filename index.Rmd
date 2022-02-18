@@ -73,9 +73,9 @@ Likert scale ratings can be treated as continuous data in aggregate if the scale
 
 ```{r}
 df2 <- df %>%
-  group_by(name) %>%
-  summarize(mean_rating=mean(3-rating)) %>%  # transform the scale from 5:1 to -2:2
-  arrange(desc(mean_rating))
+    group_by(name) %>%
+    summarize(mean_rating=mean(3-rating)) %>%  # transform the scale from 5:1 to -2:2
+    arrange(desc(mean_rating))
 
 # As before, order factor levels to achieve desired plot order.
 df2$name <- factor(df2$name, df2$name)
@@ -103,8 +103,8 @@ As an aside, it's interesting to observe how the median fails as an aggregate me
 # Same as above, but using median.
 
 df3 <- df %>%
-  group_by(name) %>%
-  summarize(median_rating=median(3-rating))
+    group_by(name) %>%
+    summarize(median_rating=median(3-rating))
 
 df3$name <- factor(df3$name, df2$name)  # same order as previous plot
 
