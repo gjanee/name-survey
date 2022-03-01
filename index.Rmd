@@ -10,9 +10,10 @@ knitr::opts_chunk$set(echo=TRUE)
 
 ```{r message=FALSE, warning=FALSE}
 library(tidyverse)
+library(assertthat)
 ```
 
-This is a brief exploration of the results of a survey using R.  The survey in question asked respondents to rate 7 proposed names for a new organization using a Likert scale ranging from 1 ("strong like") to 5 ("strong dislike").  37 responses were received.  A few ratings are blank; we replace these with 3 ("neutral") under the rationale that, while the ratings are unknown, they are neither definitely positive nor definitely negative.
+This is a brief exploration of the results of a survey using R.  The survey in question asked respondents to rate 7 proposed names for a new organization using a Likert scale ranging from 1 ("strong like") to 5 ("strong dislike").  37 responses were received.
 
 The survey was implemented using Google Forms which allows the response data to be downloaded as a CSV file.  In the file, each row corresponds to a response and each column corresponds to a survey question (i.e., proposed organization name in our case).  The data looks like this:
 
@@ -20,9 +21,16 @@ The survey was implemented using Google Forms which allows the response data to 
 cat(read_lines("data.csv", n_max=5), sep="\n")
 ```
 
-```{r message=FALSE}
+A few ratings are blank; we replace these with 3 ("neutral") under the rationale that, while the ratings are unknown, they are neither definitely positive nor definitely negative.  And although the data is small enough to be eyeballed, as good practice we validate that it matches our assumptions.
+
+```{r results=FALSE, message=FALSE}
 clean_data <- read_csv("data.csv") %>%
     mutate(across(everything(), ~replace_na(.x, 3)))
+
+assert_that(
+    nrow(filter(clean_data, if_any(everything(), ~!(.x %in% 1:5)))) == 0,
+    msg="Data out of range"
+)
 ```
 
 # Name rating distributions
